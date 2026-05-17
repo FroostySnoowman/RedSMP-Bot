@@ -63,6 +63,11 @@ Leveling:
     LEVEL_UP_CHANNEL_ID: 0
     IGNORED_CHANNEL_IDS: []
     IGNORED_ROLE_IDS: []
+    REMOVE_PREVIOUS_LEVEL_ROLES: false
+    LEVEL_ROLES:
+        5: 0
+        10: 0
+        25: 0
 
     RANK_CARD:
         WIDTH: 900

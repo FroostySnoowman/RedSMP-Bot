@@ -168,6 +168,12 @@ class LevelingCog(commands.Cog):
         self.level_up_channel_id = int(self.config.get("LEVEL_UP_CHANNEL_ID", 0))
         self.ignored_channel_ids = set(self.config.get("IGNORED_CHANNEL_IDS", []))
         self.ignored_role_ids = set(self.config.get("IGNORED_ROLE_IDS", []))
+        self.remove_previous_level_roles = bool(self.config.get("REMOVE_PREVIOUS_LEVEL_ROLES", False))
+        self.level_roles = {
+            int(level): int(role_id)
+            for level, role_id in self.config.get("LEVEL_ROLES", {}).items()
+            if int(role_id)
+        }
         self.renderer = RankCardRenderer(self.config)
 
     async def initialize(self):
@@ -244,13 +250,55 @@ class LevelingCog(commands.Cog):
             await db.commit()
             return old_level, new_level, new_level > old_level
 
-    async def announce_level_up(self, message: discord.Message, level: int):
+    async def award_level_roles(self, member: discord.Member, old_level: int, new_level: int) -> list[discord.Role]:
+        awarded_roles = []
+
+        for level in sorted(self.level_roles):
+            if not old_level < level <= new_level:
+                continue
+
+            role = member.guild.get_role(self.level_roles[level])
+
+            if role is None or role in member.roles:
+                continue
+
+            try:
+                await member.add_roles(role, reason=f"Reached level {level}")
+                awarded_roles.append(role)
+            except discord.HTTPException:
+                continue
+
+            if self.remove_previous_level_roles:
+                previous_roles = [
+                    member.guild.get_role(role_id)
+                    for role_level, role_id in self.level_roles.items()
+                    if role_level < level
+                ]
+                removable_roles = [
+                    previous_role
+                    for previous_role in previous_roles
+                    if previous_role is not None and previous_role in member.roles
+                ]
+
+                if removable_roles:
+                    try:
+                        await member.remove_roles(*removable_roles, reason=f"Reached level {level}")
+                    except discord.HTTPException:
+                        pass
+
+        return awarded_roles
+
+    async def announce_level_up(self, message: discord.Message, level: int, awarded_roles: list[discord.Role] | None = None):
         channel = self.bot.get_channel(self.level_up_channel_id) if self.level_up_channel_id else message.channel
 
         if channel is None:
             return
 
         embed = self.base_embed("Level Up!", f"{message.author.mention} reached **level {level}**!")
+
+        if awarded_roles:
+            embed.add_field(name="Role Rewards", value=", ".join(role.mention for role in awarded_roles), inline=False)
+
         await channel.send(embed=embed)
 
     async def rank_position(self, guild_id: int, user_id: int) -> int:
@@ -268,7 +316,8 @@ class LevelingCog(commands.Cog):
         old_level, new_level, leveled_up = await self.upsert_user_xp(message, amount)
 
         if leveled_up and new_level > old_level:
-            await self.announce_level_up(message, new_level)
+            awarded_roles = await self.award_level_roles(message.author, old_level, new_level)
+            await self.announce_level_up(message, new_level, awarded_roles)
 
     @level.command(name="rank", description="View your rank card or another member's rank card.")
     @app_commands.describe(member="The member to view.")
