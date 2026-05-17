@@ -99,6 +99,7 @@ initial_extensions = [
                       'cogs.commands.verification',
                       'cogs.commands.giveaways',
                       'cogs.commands.tickets',
+                      'cogs.commands.leveling',
                       ]
 
 class RedSMP(commands.Bot):

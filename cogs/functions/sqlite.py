@@ -13,59 +13,22 @@ guild_id = data["General"]["GUILD_ID"]
 embed_color = data["General"]["EMBED_COLOR"]
 DATABASE_PATH = "database.db"
 
-giveaways_columns = {
-    "id",
-    "guild_id",
-    "channel_id",
-    "message_id",
-    "host_id",
-    "prize",
-    "winner_count",
-    "end_time",
-    "status",
-    "created_at",
-}
-
-giveaway_entries_columns = {
-    "giveaway_id",
-    "user_id",
-    "joined_at",
-}
-
-ticket_columns = {
-    "id",
-    "guild_id",
-    "channel_id",
-    "creator_id",
-    "ticket_type",
-    "status",
-    "created_at",
-    "closed_at",
-}
-
-ticket_answer_columns = {
-    "ticket_id",
-    "question",
-    "answer",
-    "position",
-}
-
 async def check_tables():
     await giveaways()
     await tickets()
+    await leveling()
 
 async def refresh_table(table: str):
     if table == "Giveaways":
         await giveaways(True)
     elif table == "Tickets":
         await tickets(True)
+    elif table == "Leveling":
+        await leveling(True)
 
 async def giveaways(delete: bool = False):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         if delete:
-            await drop_giveaway_tables(db)
-
-        if not await giveaway_tables_valid(db):
             await drop_giveaway_tables(db)
 
         await db.execute("""
@@ -102,25 +65,9 @@ async def drop_giveaway_tables(db):
 
     await db.commit()
 
-async def table_columns(db, table: str) -> set[str]:
-    try:
-        async with db.execute(f"PRAGMA table_info({table})") as cursor:
-            rows = await cursor.fetchall()
-            return {row[1] for row in rows}
-    except sqlite3.OperationalError:
-        return set()
-
-async def giveaway_tables_valid(db) -> bool:
-    giveaway_table_columns = await table_columns(db, "giveaways")
-    entry_table_columns = await table_columns(db, "giveaway_entries")
-    return giveaways_columns.issubset(giveaway_table_columns) and giveaway_entries_columns.issubset(entry_table_columns)
-
 async def tickets(delete: bool = False):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         if delete:
-            await drop_ticket_tables(db)
-
-        if not await ticket_tables_valid(db):
             await drop_ticket_tables(db)
 
         await db.execute("""
@@ -155,10 +102,41 @@ async def drop_ticket_tables(db):
 
     await db.commit()
 
-async def ticket_tables_valid(db) -> bool:
-    tickets_table_columns = await table_columns(db, "tickets")
-    answers_table_columns = await table_columns(db, "ticket_answers")
-    return ticket_columns.issubset(tickets_table_columns) and ticket_answer_columns.issubset(answers_table_columns)
+async def leveling(delete: bool = False):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        if delete:
+            await drop_leveling_tables(db)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS level_users (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                xp INTEGER NOT NULL,
+                level INTEGER NOT NULL,
+                messages INTEGER NOT NULL,
+                last_xp_at INTEGER NOT NULL,
+                last_channel_id INTEGER,
+                PRIMARY KEY (guild_id, user_id)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS level_history (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                level INTEGER NOT NULL,
+                reached_at INTEGER NOT NULL
+            )
+        """)
+        await db.commit()
+
+async def drop_leveling_tables(db):
+    for table in ("level_history", "level_users"):
+        try:
+            await db.execute(f"DROP TABLE {table}")
+        except sqlite3.OperationalError:
+            pass
+
+    await db.commit()
 
 class SQLiteCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -167,7 +145,7 @@ class SQLiteCog(commands.Cog):
     @app_commands.command(name="refreshtable", description="Refreshes a SQLite table!")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(table="What table should be refreshed?")
-    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets"]) -> None:
+    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets", "Leveling"]) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         if await self.bot.is_owner(interaction.user):

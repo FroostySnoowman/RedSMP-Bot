@@ -7,6 +7,8 @@ venv/
 
 config.yml
 
+*.db
+
 *.log
 logs/
 
