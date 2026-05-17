@@ -273,7 +273,7 @@ class LevelingCog(commands.Cog):
     @level.command(name="rank", description="View your rank card or another member's rank card.")
     @app_commands.describe(member="The member to view.")
     async def rank(self, interaction: discord.Interaction, member: discord.Member | None = None):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         target = member or interaction.user
         row = await self.get_user_row(interaction.guild_id, target.id)
 
@@ -291,7 +291,7 @@ class LevelingCog(commands.Cog):
             rank = await self.rank_position(interaction.guild_id, target.id)
 
         file = await self.renderer.render(target, level, xp, current_xp, needed_xp, rank)
-        await interaction.followup.send(file=file)
+        await interaction.followup.send(file=file, ephemeral=True)
 
     @level.command(name="leaderboard", description="View the server XP leaderboard.")
     async def leaderboard(self, interaction: discord.Interaction):
@@ -323,7 +323,7 @@ class LevelingCog(commands.Cog):
             embed.description = "\n".join(description)
             embeds.append(embed)
 
-        await interaction.response.send_message(embed=embeds[0], view=LeaderboardView(embeds))
+        await interaction.response.send_message(embed=embeds[0], view=LeaderboardView(embeds), ephemeral=True)
 
 async def setup(bot):
     cog = LevelingCog(bot)

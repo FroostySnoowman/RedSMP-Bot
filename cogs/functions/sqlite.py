@@ -17,6 +17,7 @@ async def check_tables():
     await giveaways()
     await tickets()
     await leveling()
+    await automod()
 
 async def refresh_table(table: str):
     if table == "Giveaways":
@@ -25,6 +26,8 @@ async def refresh_table(table: str):
         await tickets(True)
     elif table == "Leveling":
         await leveling(True)
+    elif table == "Automod":
+        await automod(True)
 
 async def giveaways(delete: bool = False):
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -138,6 +141,36 @@ async def drop_leveling_tables(db):
 
     await db.commit()
 
+async def automod(delete: bool = False):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        if delete:
+            await drop_automod_tables(db)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS automod_infractions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                filter_type TEXT NOT NULL,
+                filter_name TEXT NOT NULL,
+                matched_value TEXT NOT NULL,
+                action TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        await db.commit()
+
+async def drop_automod_tables(db):
+    try:
+        await db.execute("DROP TABLE automod_infractions")
+    except sqlite3.OperationalError:
+        pass
+
+    await db.commit()
+
 class SQLiteCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -145,7 +178,7 @@ class SQLiteCog(commands.Cog):
     @app_commands.command(name="refreshtable", description="Refreshes a SQLite table!")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(table="What table should be refreshed?")
-    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets", "Leveling"]) -> None:
+    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets", "Leveling", "Automod"]) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         if await self.bot.is_owner(interaction.user):

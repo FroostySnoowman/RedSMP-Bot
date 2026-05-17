@@ -100,6 +100,7 @@ initial_extensions = [
                       'cogs.commands.giveaways',
                       'cogs.commands.tickets',
                       'cogs.commands.leveling',
+                      'cogs.commands.automod',
                       ]
 
 class RedSMP(commands.Bot):
