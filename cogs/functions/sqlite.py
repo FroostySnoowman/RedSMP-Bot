@@ -18,6 +18,7 @@ async def check_tables():
     await tickets()
     await leveling()
     await automod()
+    await security()
 
 async def refresh_table(table: str):
     if table == "Giveaways":
@@ -28,6 +29,8 @@ async def refresh_table(table: str):
         await leveling(True)
     elif table == "Automod":
         await automod(True)
+    elif table == "Security":
+        await security(True)
 
 async def giveaways(delete: bool = False):
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -171,6 +174,44 @@ async def drop_automod_tables(db):
 
     await db.commit()
 
+async def security(delete: bool = False):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        if delete:
+            await drop_security_tables(db)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS security_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                target_id INTEGER,
+                action_taken TEXT NOT NULL,
+                details TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS security_counters (
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                count INTEGER NOT NULL,
+                window_started_at INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, user_id, event_type)
+            )
+        """)
+        await db.commit()
+
+async def drop_security_tables(db):
+    for table in ("security_counters", "security_events"):
+        try:
+            await db.execute(f"DROP TABLE {table}")
+        except sqlite3.OperationalError:
+            pass
+
+    await db.commit()
+
 class SQLiteCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -178,7 +219,7 @@ class SQLiteCog(commands.Cog):
     @app_commands.command(name="refreshtable", description="Refreshes a SQLite table!")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(table="What table should be refreshed?")
-    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets", "Leveling", "Automod"]) -> None:
+    async def refreshtable(self, interaction: discord.Interaction, table: Literal["Giveaways", "Tickets", "Leveling", "Automod", "Security"]) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
 
         if await self.bot.is_owner(interaction.user):

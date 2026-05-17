@@ -1,0 +1,144 @@
+General:
+    TOKEN: ""
+    ACTIVITY: "watching"
+    DOING_ACTIVITY: "RedSMP"
+    STREAMING_ACTIVITY_TWITCH_URL: ""
+    STATUS: "online"
+
+    EMBED_COLOR: "#9C27B0"
+
+    GUILD_ID: 0
+
+Roles:
+    MEMBERS_ROLE_ID: 0
+
+Tickets:
+    STAFF_ROLE_IDS: []
+    LOG_CHANNEL_ID: 0
+    DEFAULT_CATEGORY_ID: 0
+
+    TYPES:
+        support:
+            LABEL: "General Support"
+            DESCRIPTION: "Get help from staff."
+            BUTTON_STYLE: "green"
+            CATEGORY_ID: 0
+            CHANNEL_PREFIX: "support"
+            QUESTIONS:
+                - "What do you need help with?"
+                - "Please share any relevant details."
+
+        report:
+            LABEL: "Report"
+            DESCRIPTION: "Report a player or issue."
+            BUTTON_STYLE: "red"
+            CATEGORY_ID: 0
+            CHANNEL_PREFIX: "report"
+            QUESTIONS:
+                - "Who or what are you reporting?"
+                - "What happened?"
+                - "Do you have any proof?"
+
+        application:
+            LABEL: "Application"
+            DESCRIPTION: "Submit an application."
+            BUTTON_STYLE: "blurple"
+            CATEGORY_ID: 0
+            CHANNEL_PREFIX: "application"
+            QUESTIONS:
+                - "What is your Minecraft username?"
+                - "How old are you?"
+                - "What timezone are you in?"
+                - "Why do you want to apply?"
+                - "What experience do you have?"
+                - "Is there anything else we should know?"
+
+Leveling:
+    ENABLED: true
+    MIN_XP_PER_MESSAGE: 15
+    MAX_XP_PER_MESSAGE: 25
+    COOLDOWN_SECONDS: 60
+    BASE_XP: 100
+    XP_MULTIPLIER: 1.35
+    LEVEL_UP_CHANNEL_ID: 0
+    IGNORED_CHANNEL_IDS: []
+    IGNORED_ROLE_IDS: []
+
+    RANK_CARD:
+        WIDTH: 900
+        HEIGHT: 280
+        BACKGROUND_COLOR: "#1f1f2e"
+        ACCENT_COLOR: "#9C27B0"
+        TEXT_COLOR: "#FFFFFF"
+        MUTED_TEXT_COLOR: "#B8B8C8"
+        BAR_BACKGROUND_COLOR: "#34344A"
+
+Automod:
+    ENABLED: true
+    LOG_FILE: "logs/automod.log"
+    LOG_CHANNEL_ID: 0
+    BYPASS_ADMINS: true
+    BYPASS_MANAGE_MESSAGES: true
+    IGNORED_CHANNEL_IDS: []
+    IGNORED_ROLE_IDS: []
+    IGNORED_USER_IDS: []
+
+    WORD_FILTERS:
+        - NAME: "Blocked Words"
+          MODE: "exact"
+          WORDS: []
+          ACTIONS:
+              DELETE: true
+              WARN: true
+              TIMEOUT: false
+              LOG: true
+          TIMEOUT_SECONDS: 300
+
+    REGEX_FILTERS:
+        - NAME: "Discord Invite Links"
+          PATTERN: "(discord\\.gg|discord\\.com/invite)/[A-Za-z0-9-]+"
+          FLAGS: "i"
+          ACTIONS:
+              DELETE: true
+              WARN: true
+              TIMEOUT: false
+              LOG: true
+          TIMEOUT_SECONDS: 300
+
+Security:
+    ENABLED: true
+    LOG_FILE: "logs/security.log"
+    LOG_CHANNEL_ID: 0
+    NOTIFY_USER_IDS: []
+    TRUSTED_USER_IDS: []
+    TRUSTED_ROLE_IDS: []
+    IGNORED_CHANNEL_IDS: []
+    EXEMPT_OWNERS: true
+
+    ANTI_SPAM:
+        ENABLED: true
+        WINDOW_SECONDS: 10
+        MAX_MESSAGES: 6
+        DUPLICATE_MESSAGE_LIMIT: 3
+        MAX_MENTIONS: 5
+        DELETE_MESSAGE: true
+        TIMEOUT: true
+        TIMEOUT_SECONDS: 300
+
+    ANTI_NUKE:
+        ENABLED: true
+        WINDOW_SECONDS: 60
+        REMOVE_ROLES: true
+        TIMEOUT: true
+        TIMEOUT_SECONDS: 3600
+        THRESHOLDS:
+            MEMBER_BAN: 3
+            MEMBER_KICK: 3
+            MEMBER_TIMEOUT: 4
+            CHANNEL_DELETE: 2
+            CHANNEL_CREATE: 5
+            ROLE_DELETE: 2
+            ROLE_CREATE: 5
+            ROLE_UPDATE: 5
+            WEBHOOK_CREATE: 2
+            BOT_ADD: 1
