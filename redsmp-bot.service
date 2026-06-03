@@ -1,0 +1,18 @@
+[Unit]
+Description=RedSMP Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=redsmp
+Group=redsmp
+WorkingDirectory=/bots/redsmp-bot
+Environment=INSTALL_DIR=/bots/redsmp-bot
+ExecStart=/bots/redsmp-bot/start.sh
+Restart=on-failure
+RestartSec=10
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

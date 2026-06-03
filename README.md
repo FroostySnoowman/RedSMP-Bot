@@ -168,6 +168,115 @@ The bot will:
 
 If slash commands do not appear immediately, restart Discord or wait for command sync. This project syncs commands globally and to the configured guild.
 
+### Production Start Script
+
+For a timestamped runtime log on Linux or a VPS, use:
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+Logs are written to:
+
+```text
+logs/main/YYYYMMDDHHMMSS-main.log
+logs/error.log
+```
+
+`start.sh` activates `venv/`, runs `main.py`, and keeps the process in the foreground from systemd’s perspective by waiting on the Python process.
+
+## VPS Deployment
+
+These steps assume a Linux VPS (Ubuntu or Debian).
+
+### 1. Install System Packages
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip git
+```
+
+### 2. Create A Deploy User
+
+```bash
+sudo useradd -r -m -s /bin/bash redsmp
+```
+
+### 3. Install The Bot
+
+```bash
+sudo mkdir -p /bots/redsmp-bot
+sudo chown redsmp:redsmp /bots/redsmp-bot
+sudo -u redsmp git clone <your-repository-url> /bots/redsmp-bot
+cd /bots/redsmp-bot
+```
+
+Set up the virtual environment and config as the deploy user:
+
+```bash
+sudo -u redsmp python3 -m venv venv
+sudo -u redsmp venv/bin/pip install -r requirements.txt
+sudo -u redsmp cp example-config.yml config.yml
+sudo -u redsmp nano config.yml
+```
+
+Fill in `config.yml` with your bot token, guild ID, and server-specific IDs.
+
+### 4. Install The Systemd Service
+
+Edit `redsmp-bot.service` if your install path or user is different. The defaults assume:
+
+- Install directory: `/bots/redsmp-bot`
+- Service user: `redsmp`
+
+```bash
+sudo cp redsmp-bot.service /etc/systemd/system/redsmp-bot.service
+sudo chmod +x /bots/redsmp-bot/start.sh
+sudo chown -R redsmp:redsmp /bots/redsmp-bot
+sudo systemctl daemon-reload
+```
+
+### 5. Enable And Start
+
+```bash
+sudo systemctl enable redsmp-bot
+sudo systemctl start redsmp-bot
+sudo systemctl status redsmp-bot
+```
+
+### 6. View Logs
+
+Runtime output from `start.sh`:
+
+```bash
+ls -lt /bots/redsmp-bot/logs/main/
+tail -f /bots/redsmp-bot/logs/main/<latest-log-file>
+```
+
+Startup errors:
+
+```bash
+tail -f /bots/redsmp-bot/logs/error.log
+```
+
+Service control:
+
+```bash
+sudo systemctl restart redsmp-bot
+sudo systemctl stop redsmp-bot
+sudo journalctl -u redsmp-bot -f
+```
+
+### 7. Update After Pulling Changes
+
+```bash
+cd /bots/redsmp-bot
+sudo -u redsmp git pull
+sudo -u redsmp venv/bin/pip install -r requirements.txt
+sudo systemctl restart redsmp-bot
+```
+
 ## Configuration Notes
 
 ### General
@@ -218,6 +327,13 @@ The bot uses SQLite and creates `database.db` automatically.
 `database.db` is ignored by Git and should not be uploaded. It contains server data such as giveaway entries, ticket records, leveling data, automod infractions, and security events.
 
 ## Logs
+
+`start.sh` writes bot runtime output to:
+
+```text
+logs/main/YYYYMMDDHHMMSS-main.log
+logs/error.log
+```
 
 Automod and security can write logs to:
 
