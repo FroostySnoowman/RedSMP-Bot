@@ -84,6 +84,8 @@ Then edit `config.yml` and fill in:
 
 Keep `config.yml` private. It contains your bot token and server-specific IDs.
 
+For a plain-language explanation of every setting, see [CONFIG.md](CONFIG.md).
+
 ## Creating The Discord Bot
 
 ### 1. Create An Application
