@@ -68,6 +68,7 @@ class TicketModal(discord.ui.Modal):
         ticket_id = await self.cog.create_ticket_record(interaction, channel, self.ticket_type)
         await self.cog.save_answers(ticket_id, answers)
         await self.cog.send_ticket_summary(channel, interaction.user, self.ticket_type, self.type_config, ticket_id, answers)
+        await self.cog.log_ticket_open(interaction, channel, ticket_id, self.ticket_type)
         await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
 
 class TicketPanelView(discord.ui.View):
@@ -149,11 +150,13 @@ class TicketsCog(commands.Cog):
 
         ticket_id = await self.create_ticket_record(interaction, channel, ticket_type)
         await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
+        await self.log_ticket_open(interaction, channel, ticket_id, ticket_type)
         answers = await self.collect_text_answers(channel, interaction.user, questions)
 
         if answers is None:
             await self.mark_ticket_closed(ticket_id)
             await channel.send("Ticket setup timed out before all questions were answered.")
+            await self.log_ticket_timeout(interaction, channel, ticket_id, ticket_type)
             return
 
         await self.save_answers(ticket_id, answers)
@@ -310,20 +313,83 @@ class TicketsCog(commands.Cog):
         filename = f"{channel.name}-transcript.txt"
         return discord.File(io.BytesIO(full_text.encode("utf-8")), filename=filename)
 
-    async def log_ticket_close(self, interaction: discord.Interaction, ticket):
-        if not self.log_channel_id:
+    async def log_ticket_open(self, interaction: discord.Interaction, channel: discord.TextChannel, ticket_id: int, ticket_type: str):
+        type_config = self.get_type_config(ticket_type)
+        label = type_config.get("LABEL", ticket_type) if type_config else ticket_type
+
+        await self.bot.event_logger.log(
+            "TICKETS",
+            "OPEN",
+            "Ticket Opened",
+            f"{interaction.user.mention} opened ticket #{ticket_id}.",
+            fields=[
+                ("Ticket ID", str(ticket_id), True),
+                ("Type", label, True),
+                ("Creator", f"{interaction.user.mention} (`{interaction.user.id}`)", False),
+                ("Channel", f"{channel.mention} (`{channel.id}`)", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "ticket_id": ticket_id,
+                "ticket_type": ticket_type,
+                "creator_id": interaction.user.id,
+                "channel_id": channel.id,
+            },
+            guild=interaction.guild,
+        )
+
+    async def log_ticket_timeout(self, interaction: discord.Interaction, channel: discord.TextChannel, ticket_id: int, ticket_type: str):
+        await self.bot.event_logger.log(
+            "TICKETS",
+            "SETUP_TIMEOUT",
+            "Ticket Setup Timed Out",
+            f"Ticket #{ticket_id} timed out before all questions were answered.",
+            fields=[
+                ("Ticket ID", str(ticket_id), True),
+                ("Type", ticket_type, True),
+                ("Creator", f"{interaction.user.mention} (`{interaction.user.id}`)", False),
+                ("Channel", f"{channel.mention} (`{channel.id}`)", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "ticket_id": ticket_id,
+                "ticket_type": ticket_type,
+                "creator_id": interaction.user.id,
+                "channel_id": channel.id,
+            },
+            guild=interaction.guild,
+        )
+
+    async def log_ticket_close(self, interaction: discord.Interaction, ticket, event: str = "CLOSE"):
+        if interaction.channel is None or interaction.guild is None:
             return
 
-        log_channel = self.bot.get_channel(self.log_channel_id)
-
-        if log_channel is None or interaction.channel is None or interaction.guild is None:
-            return
-
-        embed = self.base_embed("Ticket Closed", f"Ticket #{ticket['id']} was closed by {interaction.user.mention}.")
-        embed.add_field(name="Channel", value=f"#{interaction.channel.name} (`{interaction.channel.id}`)", inline=True)
-        embed.add_field(name="Type", value=ticket["ticket_type"], inline=True)
+        title = "Ticket Deleted" if event == "DELETE" else "Ticket Closed"
+        description = f"Ticket #{ticket['id']} was {'deleted' if event == 'DELETE' else 'closed'} by {interaction.user.mention}."
         transcript_file = await self.build_transcript_file(ticket, interaction.channel, interaction.guild, interaction.user)
-        await log_channel.send(embed=embed, file=transcript_file)
+
+        await self.bot.event_logger.log(
+            "TICKETS",
+            event,
+            title,
+            description,
+            fields=[
+                ("Ticket ID", str(ticket["id"]), True),
+                ("Type", ticket["ticket_type"], True),
+                ("Channel", f"#{interaction.channel.name} (`{interaction.channel.id}`)", False),
+                ("Closed By", f"{interaction.user.mention} (`{interaction.user.id}`)", False),
+            ],
+            file=transcript_file,
+            payload={
+                "guild_id": interaction.guild.id,
+                "ticket_id": ticket["id"],
+                "ticket_type": ticket["ticket_type"],
+                "creator_id": ticket["creator_id"],
+                "channel_id": interaction.channel.id,
+                "closed_by": interaction.user.id,
+            },
+            guild=interaction.guild,
+        )
 
     async def disable_close_button(self, channel: discord.TextChannel):
         async for message in channel.history(limit=25):
@@ -395,6 +461,23 @@ class TicketsCog(commands.Cog):
 
         await interaction.channel.send(embed=embed, view=TicketPanelView(self))
         await interaction.response.send_message("Ticket panel sent.", ephemeral=True)
+        await self.bot.event_logger.log(
+            "TICKETS",
+            "PANEL_SENT",
+            "Ticket Panel Sent",
+            f"{interaction.user.mention} sent the ticket panel in {interaction.channel.mention}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", True),
+                ("Ticket Types", str(len(self.ticket_types)), True),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "moderator_id": interaction.user.id,
+                "channel_id": interaction.channel.id,
+            },
+            guild=interaction.guild,
+        )
 
     @ticket.command(name="close", description="Close the current ticket.")
     async def close(self, interaction: discord.Interaction):
@@ -418,7 +501,7 @@ class TicketsCog(commands.Cog):
 
         await self.mark_ticket_closed(ticket["id"])
         await interaction.response.send_message("Deleting ticket channel.", ephemeral=True)
-        await self.log_ticket_close(interaction, ticket)
+        await self.log_ticket_close(interaction, ticket, event="DELETE")
         await interaction.channel.delete(reason=f"Ticket deleted by {interaction.user}")
 
 async def setup(bot):

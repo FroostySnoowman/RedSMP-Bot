@@ -206,49 +206,37 @@ class AutomodCog(commands.Cog):
             await db.execute("INSERT INTO automod_infractions (guild_id, user_id, channel_id, message_id, filter_type, filter_name, matched_value, action, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (message.guild.id, message.author.id, message.channel.id, message.id, match["filter_type"], match["filter_name"], match["matched_value"], action, message.content, current_timestamp()))
             await db.commit()
 
-    async def write_file_log(self, message: discord.Message, match: dict, action: str):
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "created_at": current_timestamp(),
-            "guild_id": message.guild.id,
-            "channel_id": message.channel.id,
-            "message_id": message.id,
-            "user_id": message.author.id,
-            "filter_type": match["filter_type"],
-            "filter_name": match["filter_name"],
-            "matched_value": match["matched_value"],
-            "action": action,
-            "content": message.content,
-        }
-
-        with self.log_file.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(payload, ensure_ascii=False) + "\n")
-
-    async def send_log_embed(self, message: discord.Message, match: dict, action: str):
-        if not self.log_channel_id:
-            return
-
-        channel = self.bot.get_channel(self.log_channel_id)
-
-        if channel is None:
-            return
-
-        embed = self.base_embed("Automod Alert")
-        embed.add_field(name="User", value=f"{message.author.mention} (`{message.author.id}`)", inline=False)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.add_field(name="Filter", value=f"{match['filter_name']} ({match['filter_type']})", inline=True)
-        embed.add_field(name="Match", value=str(match["display_value"])[:1024], inline=False)
-        embed.add_field(name="Action", value=action, inline=True)
-        embed.add_field(name="Content", value=message.content[:1024] or "No content.", inline=False)
-        await channel.send(embed=embed)
-
     async def handle_match(self, message: discord.Message, match: dict):
         action = await self.apply_actions(message, match)
         await self.save_infraction(message, match, action)
 
         if match["actions"].get("LOG", True):
-            await self.write_file_log(message, match, action)
-            await self.send_log_embed(message, match, action)
+            await self.bot.event_logger.log(
+                "AUTOMOD",
+                "FILTER_MATCH",
+                "Automod Alert",
+                f"{message.author.mention} triggered **{match['filter_name']}**.",
+                fields=[
+                    ("User", f"{message.author.mention} (`{message.author.id}`)", False),
+                    ("Channel", message.channel.mention, True),
+                    ("Filter", f"{match['filter_name']} ({match['filter_type']})", True),
+                    ("Action", action, True),
+                    ("Match", str(match["display_value"])[:1024], False),
+                    ("Content", message.content[:1024] or "No content.", False),
+                ],
+                payload={
+                    "guild_id": message.guild.id,
+                    "channel_id": message.channel.id,
+                    "message_id": message.id,
+                    "user_id": message.author.id,
+                    "filter_type": match["filter_type"],
+                    "filter_name": match["filter_name"],
+                    "matched_value": match["matched_value"],
+                    "action": action,
+                    "content": message.content,
+                },
+                guild=message.guild,
+            )
 
     async def get_infractions(self, guild_id: int, user_id: int):
         async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -275,8 +263,10 @@ class AutomodCog(commands.Cog):
         embed.add_field(name="Enabled", value=str(self.enabled), inline=True)
         embed.add_field(name="Word Filters", value=str(len(self.word_filters)), inline=True)
         embed.add_field(name="Regex Filters", value=str(len(self.regex_filters)), inline=True)
-        embed.add_field(name="Log File", value=str(self.log_file), inline=False)
-        embed.add_field(name="Log Channel", value=f"<#{self.log_channel_id}>" if self.log_channel_id else "Not configured", inline=False)
+        logger = self.bot.event_logger
+        automod_channel_id = logger.resolve_channel_id("AUTOMOD")
+        embed.add_field(name="Log File", value=str(logger.resolve_file_path("AUTOMOD")), inline=False)
+        embed.add_field(name="Log Channel", value=f"<#{automod_channel_id}>" if automod_channel_id else "Not configured", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @automod_group.command(name="infractions", description="List recent automod infractions for a member.")

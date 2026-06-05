@@ -201,3 +201,122 @@ Moderation:
         MIN_AMOUNT: 1
         MAX_AMOUNT: 100
         DELETE_PINNED: false
+
+Logging:
+    ENABLED: true
+    DEFAULT_CHANNEL_ID: 0
+    LOG_TO_FILES: true
+    LOG_DIRECTORY: "logs"
+    IGNORE_BOTS: true
+
+    CHANNELS:
+        MODERATION: 0
+        TICKETS: 0
+        VERIFICATION: 0
+        GIVEAWAYS: 0
+        LEVELING: 0
+        REACTION_ROLES: 0
+        AUTOMOD: 0
+        SECURITY: 0
+        MEMBERS: 0
+        AUDIT: 0
+
+    FILES:
+        MODERATION: "moderation.log"
+        TICKETS: "tickets.log"
+        VERIFICATION: "verification.log"
+        GIVEAWAYS: "giveaways.log"
+        LEVELING: "leveling.log"
+        REACTION_ROLES: "reaction_roles.log"
+        AUTOMOD: "automod.log"
+        SECURITY: "security.log"
+        MEMBERS: "members.log"
+        AUDIT: "audit.log"
+
+    LEGACY:
+        USE_TICKETS_LOG_CHANNEL: true
+        USE_AUTOMOD_LOG_CHANNEL: true
+        USE_SECURITY_LOG_CHANNEL: true
+
+    SECURITY:
+        NOTIFY_USER_IDS: []
+
+    EVENTS:
+        MODERATION:
+            CHANNEL_LOCK: true
+            CHANNEL_UNLOCK: true
+            PURGE: true
+        TICKETS:
+            OPEN: true
+            CLOSE: true
+            DELETE: true
+            SETUP_TIMEOUT: true
+            PANEL_SENT: true
+        VERIFICATION:
+            SUCCESS: true
+            PANEL_SENT: true
+        GIVEAWAYS:
+            START: true
+            FINISH: true
+            STOP: true
+            DELETE: true
+            ENTRY: false
+        LEVELING:
+            LEVEL_UP: true
+            ROLE_AWARD: true
+        REACTION_ROLES:
+            ROLE_ADDED: true
+            ROLE_REMOVED: true
+            PANEL_SENT: true
+        AUTOMOD:
+            FILTER_MATCH: true
+        SECURITY:
+            EVENT: true
+            CRITICAL: true
+        MEMBERS:
+            JOIN: true
+            LEAVE: true
+            BAN: false
+            UNBAN: true
+            ROLE_ADD: true
+            ROLE_REMOVE: true
+            TIMEOUT_ADD: true
+            TIMEOUT_REMOVE: true
+            NICKNAME_CHANGE: true
+            BOOST: true
+        AUDIT:
+            MEMBER_KICK: true
+            MEMBER_BAN: true
+            MEMBER_UNBAN: false
+            MEMBER_TIMEOUT: true
+            MEMBER_ROLE_UPDATE: false
+            MEMBER_UPDATE: false
+            CHANNEL_CREATE: true
+            CHANNEL_DELETE: true
+            CHANNEL_UPDATE: true
+            ROLE_CREATE: true
+            ROLE_DELETE: true
+            ROLE_UPDATE: true
+            MESSAGE_DELETE: false
+            MESSAGE_BULK_DELETE: true
+            INVITE_CREATE: false
+            INVITE_DELETE: false
+            WEBHOOK_CREATE: true
+            WEBHOOK_UPDATE: false
+            WEBHOOK_DELETE: true
+            EMOJI_CREATE: false
+            EMOJI_UPDATE: false
+            EMOJI_DELETE: false
+            OVERWRITE_CREATE: true
+            OVERWRITE_UPDATE: true
+            OVERWRITE_DELETE: true
+            MEMBER_MOVE: false
+            MEMBER_DISCONNECT: false
+            BOT_ADD: true
+            THREAD_CREATE: false
+            THREAD_DELETE: false
+            THREAD_UPDATE: false
+            GUILD_UPDATE: false
+            STICKER_CREATE: false
+            STICKER_UPDATE: false
+            STICKER_DELETE: false

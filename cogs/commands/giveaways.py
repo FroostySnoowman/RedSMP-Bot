@@ -198,6 +198,24 @@ class GiveawaysCog(commands.Cog):
 
         await self.update_giveaway_message(giveaway_id)
         await interaction.response.send_message("You're entered in the giveaway!", ephemeral=True)
+        await self.bot.event_logger.log(
+            "GIVEAWAYS",
+            "ENTRY",
+            "Giveaway Entry",
+            f"{interaction.user.mention} entered giveaway #{giveaway_id}.",
+            fields=[
+                ("User", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Giveaway ID", str(giveaway_id), True),
+                ("Prize", giveaway["prize"], False),
+            ],
+            payload={
+                "guild_id": interaction.guild_id,
+                "user_id": interaction.user.id,
+                "giveaway_id": giveaway_id,
+                "prize": giveaway["prize"],
+            },
+            guild=interaction.guild,
+        )
 
     async def finish_giveaway(self, giveaway_id: int, announce: bool = True):
         giveaway = await self.get_giveaway(giveaway_id)
@@ -224,6 +242,32 @@ class GiveawaysCog(commands.Cog):
                     await channel.send(f"Congratulations {winner_mentions}! You won **{giveaway['prize']}**!")
                 else:
                     await channel.send(f"Giveaway **{giveaway['prize']}** ended with no entries.")
+
+        guild = self.bot.get_guild(giveaway["guild_id"])
+        winner_text = ", ".join(f"<@{winner}>" for winner in winners) if winners else "No winners"
+
+        await self.bot.event_logger.log(
+            "GIVEAWAYS",
+            "FINISH",
+            "Giveaway Finished",
+            f"Giveaway #{giveaway_id} for **{giveaway['prize']}** has ended.",
+            fields=[
+                ("Giveaway ID", str(giveaway_id), True),
+                ("Prize", giveaway["prize"], True),
+                ("Entries", str(len(entries)), True),
+                ("Winners", winner_text, False),
+                ("Channel", f"<#{giveaway['channel_id']}>", True),
+            ],
+            payload={
+                "guild_id": giveaway["guild_id"],
+                "giveaway_id": giveaway_id,
+                "prize": giveaway["prize"],
+                "winner_ids": winners,
+                "entry_count": len(entries),
+                "channel_id": giveaway["channel_id"],
+            },
+            guild=guild,
+        )
 
         return True
 
@@ -271,6 +315,30 @@ class GiveawaysCog(commands.Cog):
             await db.commit()
 
         self.bot.add_view(GiveawayEntryView(self, giveaway_id), message_id=message.id)
+        await self.bot.event_logger.log(
+            "GIVEAWAYS",
+            "START",
+            "Giveaway Started",
+            f"{interaction.user.mention} started giveaway #{giveaway_id}.",
+            fields=[
+                ("Host", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Giveaway ID", str(giveaway_id), True),
+                ("Prize", prize, True),
+                ("Winners", str(winners), True),
+                ("Ends", f"<t:{end_time}:R>", False),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "giveaway_id": giveaway_id,
+                "host_id": interaction.user.id,
+                "prize": prize,
+                "winner_count": winners,
+                "end_time": end_time,
+                "channel_id": interaction.channel.id,
+            },
+            guild=interaction.guild,
+        )
 
     @giveaway.command(name="list", description="List giveaways.")
     @app_commands.checks.has_permissions(administrator=True)
@@ -325,6 +393,24 @@ class GiveawaysCog(commands.Cog):
 
         await self.update_giveaway_message(giveaway_id, disabled=True)
         await interaction.response.send_message(f"Stopped giveaway #{giveaway_id}.", ephemeral=True)
+        await self.bot.event_logger.log(
+            "GIVEAWAYS",
+            "STOP",
+            "Giveaway Stopped",
+            f"{interaction.user.mention} stopped giveaway #{giveaway_id}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Giveaway ID", str(giveaway_id), True),
+                ("Prize", giveaway["prize"], False),
+            ],
+            payload={
+                "guild_id": interaction.guild_id,
+                "giveaway_id": giveaway_id,
+                "moderator_id": interaction.user.id,
+                "prize": giveaway["prize"],
+            },
+            guild=interaction.guild,
+        )
 
     @giveaway.command(name="finish", description="Finish a giveaway and draw winners now.")
     @app_commands.checks.has_permissions(administrator=True)
@@ -368,6 +454,24 @@ class GiveawaysCog(commands.Cog):
             await db.commit()
 
         await interaction.response.send_message(f"Deleted giveaway #{giveaway_id}.", ephemeral=True)
+        await self.bot.event_logger.log(
+            "GIVEAWAYS",
+            "DELETE",
+            "Giveaway Deleted",
+            f"{interaction.user.mention} deleted giveaway #{giveaway_id}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Giveaway ID", str(giveaway_id), True),
+                ("Prize", giveaway["prize"], False),
+            ],
+            payload={
+                "guild_id": interaction.guild_id,
+                "giveaway_id": giveaway_id,
+                "moderator_id": interaction.user.id,
+                "prize": giveaway["prize"],
+            },
+            guild=interaction.guild,
+        )
 
 async def setup(bot):
     cog = GiveawaysCog(bot)

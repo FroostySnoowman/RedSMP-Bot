@@ -153,6 +153,25 @@ class ReactionRolesCog(commands.Cog):
 
             embed = self.base_embed("Role Removed", f"You no longer have **{label}** ({role.mention}).", discord.Color.red())
             await interaction.response.send_message(embed=embed, ephemeral=True)
+            await self.bot.event_logger.log(
+                "REACTION_ROLES",
+                "ROLE_REMOVED",
+                "Reaction Role Removed",
+                f"{member.mention} removed **{label}**.",
+                fields=[
+                    ("User", f"{member.mention} (`{member.id}`)", True),
+                    ("Panel", panel_key, True),
+                    ("Role", f"{role.mention} (`{role.id}`)", True),
+                ],
+                payload={
+                    "guild_id": interaction.guild.id,
+                    "user_id": member.id,
+                    "panel_key": panel_key,
+                    "role_id": role.id,
+                    "label": label,
+                },
+                guild=interaction.guild,
+            )
             return
 
         if panel.get("EXCLUSIVE", False):
@@ -187,6 +206,27 @@ class ReactionRolesCog(commands.Cog):
 
         embed = self.base_embed("Role Added", description, discord.Color.green())
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self.bot.event_logger.log(
+            "REACTION_ROLES",
+            "ROLE_ADDED",
+            "Reaction Role Added",
+            f"{member.mention} added **{label}**.",
+            fields=[
+                ("User", f"{member.mention} (`{member.id}`)", True),
+                ("Panel", panel_key, True),
+                ("Role", f"{role.mention} (`{role.id}`)", True),
+                ("Exclusive", "Yes" if panel.get("EXCLUSIVE", False) else "No", True),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "user_id": member.id,
+                "panel_key": panel_key,
+                "role_id": role.id,
+                "label": label,
+                "exclusive": panel.get("EXCLUSIVE", False),
+            },
+            guild=interaction.guild,
+        )
 
     async def panel_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
         choices = []
@@ -226,6 +266,25 @@ class ReactionRolesCog(commands.Cog):
 
         for embed, view in panels_to_send:
             await interaction.channel.send(embed=embed, view=view)
+
+        await self.bot.event_logger.log(
+            "REACTION_ROLES",
+            "PANEL_SENT",
+            "Reaction Role Panels Sent",
+            f"{interaction.user.mention} sent **{len(panels_to_send)}** reaction role panel(s) in {interaction.channel.mention}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", True),
+                ("Panels Sent", str(len(panels_to_send)), True),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "moderator_id": interaction.user.id,
+                "channel_id": interaction.channel.id,
+                "panel_count": len(panels_to_send),
+            },
+            guild=interaction.guild,
+        )
 
     @send.autocomplete("panel")
     async def send_panel_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:

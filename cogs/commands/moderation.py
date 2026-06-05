@@ -272,6 +272,26 @@ class ModerationCog(commands.Cog):
 
         await interaction.channel.send(embed=channel_embed)
         await interaction.followup.send(response, ephemeral=True)
+        await self.bot.event_logger.log(
+            "MODERATION",
+            "CHANNEL_LOCK",
+            "Channel Locked",
+            f"{interaction.user.mention} locked {interaction.channel.mention}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", True),
+                ("Staff Roles", staff_mentions, False),
+                ("Warnings", ", ".join(warnings) if warnings else "None", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "moderator_id": interaction.user.id,
+                "channel_id": interaction.channel.id,
+                "staff_role_ids": self.lock_staff_role_ids,
+                "warnings": warnings,
+            },
+            guild=interaction.guild,
+        )
 
     @app_commands.command(name="unlockchat", description="Unlock this channel and restore normal send permissions.")
     @app_commands.checks.bot_has_permissions(manage_channels=True)
@@ -309,6 +329,24 @@ class ModerationCog(commands.Cog):
 
         await interaction.channel.send(embed=channel_embed)
         await interaction.followup.send(response, ephemeral=True)
+        await self.bot.event_logger.log(
+            "MODERATION",
+            "CHANNEL_UNLOCK",
+            "Channel Unlocked",
+            f"{interaction.user.mention} unlocked {interaction.channel.mention}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", True),
+                ("Warnings", ", ".join(warnings) if warnings else "None", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "moderator_id": interaction.user.id,
+                "channel_id": interaction.channel.id,
+                "warnings": warnings,
+            },
+            guild=interaction.guild,
+        )
 
     @app_commands.command(name="purge", description="Delete multiple messages from this channel.")
     @app_commands.describe(amount="How many recent messages to check.", user="Only delete messages from this member.")
@@ -364,6 +402,28 @@ class ModerationCog(commands.Cog):
             description += f"\n\nFilter: {user.mention}"
 
         await interaction.followup.send(embed=self.base_embed("Purge Complete", description), ephemeral=True)
+        await self.bot.event_logger.log(
+            "MODERATION",
+            "PURGE",
+            "Messages Purged",
+            f"{interaction.user.mention} purged **{deleted_count}** message(s) in {interaction.channel.mention}.",
+            fields=[
+                ("Moderator", f"{interaction.user.mention} (`{interaction.user.id}`)", True),
+                ("Channel", f"{interaction.channel.mention} (`{interaction.channel.id}`)", True),
+                ("Deleted", str(deleted_count), True),
+                ("Requested", str(amount), True),
+                ("Target User", user.mention if user is not None else "All users", False),
+            ],
+            payload={
+                "guild_id": interaction.guild.id,
+                "moderator_id": interaction.user.id,
+                "channel_id": interaction.channel.id,
+                "deleted_count": deleted_count,
+                "requested_amount": amount,
+                "target_user_id": user.id if user is not None else None,
+            },
+            guild=interaction.guild,
+        )
 
 async def setup(bot):
     await bot.add_cog(ModerationCog(bot), guilds=[discord.Object(id=guild_id)])

@@ -153,45 +153,33 @@ class SecurityCog(commands.Cog):
             await db.execute("INSERT INTO security_events (guild_id, user_id, event_type, target_id, action_taken, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (guild_id, user_id, event_type, target_id, action_taken, json.dumps(details, ensure_ascii=False), current_timestamp()))
             await db.commit()
 
-    async def write_file_log(self, payload: dict):
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with self.log_file.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(payload, ensure_ascii=False) + "\n")
-
-    async def send_log_embed(self, guild: discord.Guild, title: str, description: str, payload: dict):
-        channel = self.bot.get_channel(self.log_channel_id) if self.log_channel_id else None
-
-        if channel is not None:
-            embed = self.base_embed(title, description)
-            embed.add_field(name="Event", value=payload.get("event_type", "Unknown"), inline=True)
-            embed.add_field(name="Action", value=payload.get("action_taken", "None"), inline=True)
-            embed.add_field(name="User ID", value=str(payload.get("user_id")), inline=True)
-            await channel.send(embed=embed)
-
-        for user_id in self.notify_user_ids:
-            user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
-
-            if user is not None:
-                try:
-                    await user.send(f"Security alert in **{guild.name}**: {description}")
-                except discord.HTTPException:
-                    pass
-
     async def log_security_event(self, guild: discord.Guild, user_id: int, event_type: str, target_id: int | None, action_taken: str, details: dict, critical: bool = False):
-        payload = {
-            "created_at": current_timestamp(),
-            "guild_id": guild.id,
-            "user_id": user_id,
-            "event_type": event_type,
-            "target_id": target_id,
-            "action_taken": action_taken,
-            "details": details,
-            "critical": critical,
-        }
         await self.save_event(guild.id, user_id, event_type, target_id, action_taken, details)
-        await self.write_file_log(payload)
-        await self.send_log_embed(guild, "Security Alert" if critical else "Security Event", f"`{event_type}` triggered for <@{user_id}>.", payload)
+        await self.bot.event_logger.log(
+            "SECURITY",
+            "CRITICAL" if critical else "EVENT",
+            "Security Alert" if critical else "Security Event",
+            f"`{event_type}` triggered for <@{user_id}>.",
+            fields=[
+                ("Event", event_type, True),
+                ("Action", action_taken, True),
+                ("User", f"<@{user_id}> (`{user_id}`)", True),
+                ("Target ID", str(target_id) if target_id is not None else "None", True),
+                ("Details", json.dumps(details, ensure_ascii=False)[:1024], False),
+            ],
+            color=discord.Color.red() if critical else None,
+            payload={
+                "guild_id": guild.id,
+                "user_id": user_id,
+                "event_type": event_type,
+                "target_id": target_id,
+                "action_taken": action_taken,
+                "details": details,
+                "critical": critical,
+            },
+            guild=guild,
+            notify_critical=critical,
+        )
 
     async def remove_member_roles(self, member: discord.Member) -> list[int]:
         removed_roles = []
@@ -374,8 +362,10 @@ class SecurityCog(commands.Cog):
         embed.add_field(name="Enabled", value=str(self.enabled), inline=True)
         embed.add_field(name="Anti-Spam", value=str(self.spam_config.get("ENABLED", True)), inline=True)
         embed.add_field(name="Anti-Nuke", value=str(self.nuke_config.get("ENABLED", True)), inline=True)
-        embed.add_field(name="Log File", value=str(self.log_file), inline=False)
-        embed.add_field(name="Log Channel", value=f"<#{self.log_channel_id}>" if self.log_channel_id else "Not configured", inline=False)
+        logger = self.bot.event_logger
+        security_channel_id = logger.resolve_channel_id("SECURITY")
+        embed.add_field(name="Log File", value=str(logger.resolve_file_path("SECURITY")), inline=False)
+        embed.add_field(name="Log Channel", value=f"<#{security_channel_id}>" if security_channel_id else "Not configured", inline=False)
         embed.add_field(name="Notify Users", value=str(len(self.notify_user_ids)), inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

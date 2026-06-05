@@ -4,6 +4,7 @@ import sys
 from discord.ext.commands import CommandNotFound
 from discord.ext import commands
 from cogs.functions.sqlite import check_tables
+from cogs.functions.event_logger import EventLogger
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -104,6 +105,8 @@ initial_extensions = [
                       'cogs.commands.security',
                       'cogs.commands.moderation',
                       'cogs.commands.reaction_roles',
+                      'cogs.events.members',
+                      'cogs.events.audit',
                       ]
 
 class RedSMP(commands.Bot):
@@ -124,6 +127,8 @@ class RedSMP(commands.Bot):
         print('Checking local databases...')
         await check_tables()
         print('Check successful!')
+
+        self.event_logger = EventLogger(self, data, embed_color)
 
         for extension in initial_extensions:
             await self.load_extension(extension)

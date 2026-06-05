@@ -318,6 +318,46 @@ class LevelingCog(commands.Cog):
         if leveled_up and new_level > old_level:
             awarded_roles = await self.award_level_roles(message.author, old_level, new_level)
             await self.announce_level_up(message, new_level, awarded_roles)
+            await self.bot.event_logger.log(
+                "LEVELING",
+                "LEVEL_UP",
+                "Level Up",
+                f"{message.author.mention} reached **level {new_level}**.",
+                fields=[
+                    ("User", f"{message.author.mention} (`{message.author.id}`)", True),
+                    ("Previous Level", str(old_level), True),
+                    ("New Level", str(new_level), True),
+                    ("Channel", message.channel.mention, True),
+                ],
+                payload={
+                    "guild_id": message.guild.id,
+                    "user_id": message.author.id,
+                    "old_level": old_level,
+                    "new_level": new_level,
+                    "channel_id": message.channel.id,
+                },
+                guild=message.guild,
+            )
+
+            if awarded_roles:
+                await self.bot.event_logger.log(
+                    "LEVELING",
+                    "ROLE_AWARD",
+                    "Level Role Awarded",
+                    f"{message.author.mention} received level role rewards.",
+                    fields=[
+                        ("User", f"{message.author.mention} (`{message.author.id}`)", True),
+                        ("Level", str(new_level), True),
+                        ("Roles", ", ".join(role.mention for role in awarded_roles), False),
+                    ],
+                    payload={
+                        "guild_id": message.guild.id,
+                        "user_id": message.author.id,
+                        "level": new_level,
+                        "role_ids": [role.id for role in awarded_roles],
+                    },
+                    guild=message.guild,
+                )
 
     @level.command(name="rank", description="View your rank card or another member's rank card.")
     @app_commands.describe(member="The member to view.")
