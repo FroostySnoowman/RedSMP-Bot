@@ -12,6 +12,45 @@ General:
 Roles:
     MEMBERS_ROLE_ID: 0
 
+ReactionRoles:
+    TITLE_EMOJI: "🔔"
+    PANELS:
+        region:
+            TITLE: "Select Your Region Roles"
+            DESCRIPTION: "Select where you're from."
+            EXCLUSIVE: true
+            BUTTON_STYLE: "blurple"
+            ROLES:
+                - LABEL: "Europe"
+                  ROLE_ID: 0
+                - LABEL: "North America"
+                  ROLE_ID: 0
+                - LABEL: "Asia"
+                  ROLE_ID: 0
+                - LABEL: "Oceania"
+                  ROLE_ID: 0
+                - LABEL: "South America"
+                  ROLE_ID: 0
+                - LABEL: "Africa"
+                  ROLE_ID: 0
+
+        notifications:
+            TITLE: "Select Your Notification Roles"
+            DESCRIPTION: "Select which things you want to be notified for."
+            EXCLUSIVE: false
+            BUTTON_STYLE: "blurple"
+            ROLES:
+                - LABEL: "News"
+                  ROLE_ID: 0
+                - LABEL: "Streams"
+                  ROLE_ID: 0
+                - LABEL: "Events"
+                  ROLE_ID: 0
+                - LABEL: "Polls"
+                  ROLE_ID: 0
+                - LABEL: "Updates"
+                  ROLE_ID: 0
+
 Tickets:
     STAFF_ROLE_IDS: []
     LOG_CHANNEL_ID: 0

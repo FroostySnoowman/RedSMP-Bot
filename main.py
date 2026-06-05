@@ -103,6 +103,7 @@ initial_extensions = [
                       'cogs.commands.automod',
                       'cogs.commands.security',
                       'cogs.commands.moderation',
+                      'cogs.commands.reaction_roles',
                       ]
 
 class RedSMP(commands.Bot):
