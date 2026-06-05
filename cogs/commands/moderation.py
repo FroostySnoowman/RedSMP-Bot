@@ -74,55 +74,113 @@ class ModerationCog(commands.Cog):
 
         return guild.get_role(self.members_role_id)
 
-    async def lock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> bool:
+    def can_manage_role(self, guild: discord.Guild, role: discord.Role) -> bool:
+        if role.is_default():
+            return guild.me.guild_permissions.manage_roles
+
+        return guild.me.top_role > role and guild.me.guild_permissions.manage_roles
+
+    async def apply_send_lock(self, channel: discord.TextChannel, target: discord.Role | discord.Member, locked: bool, reason: str):
+        overwrite = channel.overwrites_for(target)
+
+        if locked:
+            overwrite.send_messages = False
+            overwrite.send_messages_in_threads = False
+            overwrite.create_public_threads = False
+            overwrite.create_private_threads = False
+        else:
+            overwrite.send_messages = None
+            overwrite.send_messages_in_threads = None
+            overwrite.create_public_threads = None
+            overwrite.create_private_threads = None
+
+        await channel.set_permissions(target, overwrite=overwrite, reason=reason)
+
+    async def apply_staff_access(self, channel: discord.TextChannel, role: discord.Role, reason: str):
+        overwrite = channel.overwrites_for(role)
+        overwrite.view_channel = True
+        overwrite.read_message_history = True
+        overwrite.send_messages = True
+        overwrite.send_messages_in_threads = True
+        await channel.set_permissions(role, overwrite=overwrite, reason=reason)
+
+    async def lock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> tuple[bool, list[str]]:
         guild = channel.guild
         reason = f"Channel locked by {moderator}"
         staff_ids = set(self.lock_staff_role_ids)
+        errors = []
 
         try:
             if self.lock_deny_everyone:
-                await channel.set_permissions(guild.default_role, send_messages=False, reason=reason)
+                if self.can_manage_role(guild, guild.default_role):
+                    await self.apply_send_lock(channel, guild.default_role, True, reason)
+                else:
+                    errors.append("@everyone")
 
             if self.lock_deny_members_role:
                 members_role = self.members_role(guild)
 
-                if members_role is not None and members_role.id not in staff_ids:
-                    await channel.set_permissions(members_role, send_messages=False, reason=reason)
+                if members_role is None:
+                    errors.append(f"Members role not found (`{self.members_role_id}`)")
+                elif members_role.id in staff_ids:
+                    pass
+                elif self.can_manage_role(guild, members_role):
+                    await self.apply_send_lock(channel, members_role, True, reason)
+                else:
+                    errors.append(f"{members_role.name} (move the bot role above it)")
 
-            await channel.set_permissions(guild.me, send_messages=True, read_message_history=True, reason=reason)
+            overwrite = channel.overwrites_for(guild.me)
+            overwrite.view_channel = True
+            overwrite.read_message_history = True
+            overwrite.send_messages = True
+            overwrite.send_messages_in_threads = True
+            await channel.set_permissions(guild.me, overwrite=overwrite, reason=reason)
 
             for role in self.staff_roles(guild):
-                await channel.set_permissions(role, send_messages=True, read_message_history=True, reason=reason)
+                if self.can_manage_role(guild, role):
+                    await self.apply_staff_access(channel, role, reason)
+                else:
+                    errors.append(f"{role.name} (move the bot role above it)")
         except discord.Forbidden:
-            return False
+            return False, ["missing channel permissions"]
         except discord.HTTPException:
-            return False
+            return False, ["discord API error"]
 
-        return True
+        return len(errors) == 0, errors
 
-    async def unlock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> bool:
+    async def unlock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> tuple[bool, list[str]]:
         guild = channel.guild
         reason = f"Channel unlocked by {moderator}"
         staff_ids = set(self.lock_staff_role_ids)
+        errors = []
 
         try:
             if self.lock_deny_everyone:
-                await channel.set_permissions(guild.default_role, send_messages=None, reason=reason)
+                if self.can_manage_role(guild, guild.default_role):
+                    await self.apply_send_lock(channel, guild.default_role, False, reason)
+                else:
+                    errors.append("@everyone")
 
             if self.lock_deny_members_role:
                 members_role = self.members_role(guild)
 
                 if members_role is not None and members_role.id not in staff_ids:
-                    await channel.set_permissions(members_role, send_messages=None, reason=reason)
+                    if self.can_manage_role(guild, members_role):
+                        await self.apply_send_lock(channel, members_role, False, reason)
+                    else:
+                        errors.append(f"{members_role.name} (move the bot role above it)")
 
             for role in self.staff_roles(guild):
-                await channel.set_permissions(role, send_messages=None, reason=reason)
+                if self.can_manage_role(guild, role):
+                    await self.apply_send_lock(channel, role, False, reason)
+                else:
+                    errors.append(f"{role.name} (move the bot role above it)")
         except discord.Forbidden:
-            return False
+            return False, ["missing channel permissions"]
         except discord.HTTPException:
-            return False
+            return False, ["discord API error"]
 
-        return True
+        return len(errors) == 0, errors
 
     @app_commands.command(name="lockchat", description="Lock this channel so only staff can send messages.")
     @app_commands.checks.bot_has_permissions(manage_channels=True, manage_roles=True)
@@ -147,10 +205,11 @@ class ModerationCog(commands.Cog):
             await interaction.response.send_message("No staff roles are configured in `Moderation.LOCKCHAT.STAFF_ROLE_IDS`.", ephemeral=True)
             return
 
-        locked = await self.lock_channel(interaction.channel, interaction.user)
+        locked, errors = await self.lock_channel(interaction.channel, interaction.user)
 
         if not locked:
-            await interaction.response.send_message("I could not lock this channel. Check my permissions.", ephemeral=True)
+            error_text = ", ".join(errors)
+            await interaction.response.send_message(f"I could not fully lock this channel: {error_text}", ephemeral=True)
             return
 
         staff_mentions = ", ".join(role.mention for role in self.staff_roles(interaction.guild)) or "configured staff"
@@ -177,10 +236,11 @@ class ModerationCog(commands.Cog):
             await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
             return
 
-        unlocked = await self.unlock_channel(interaction.channel, interaction.user)
+        unlocked, errors = await self.unlock_channel(interaction.channel, interaction.user)
 
         if not unlocked:
-            await interaction.response.send_message("I could not unlock this channel. Check my permissions.", ephemeral=True)
+            error_text = ", ".join(errors)
+            await interaction.response.send_message(f"I could not fully unlock this channel: {error_text}", ephemeral=True)
             return
 
         channel_embed = self.base_embed("Channel Unlocked", f"This channel was unlocked by {interaction.user.mention}.")
