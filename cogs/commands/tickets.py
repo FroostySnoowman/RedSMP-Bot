@@ -287,7 +287,7 @@ class TicketsCog(commands.Cog):
             messages.append(message)
         return messages
 
-    async def build_transcript(self, ticket, channel: discord.TextChannel, guild: discord.Guild, closer: discord.abc.User | None = None) -> tuple[discord.Embed, discord.File]:
+    async def build_transcript_file(self, ticket, channel: discord.TextChannel, guild: discord.Guild, closer: discord.abc.User | None = None) -> discord.File:
         type_config = self.get_type_config(ticket["ticket_type"])
         category = type_config.get("LABEL", ticket["ticket_type"]) if type_config else ticket["ticket_type"]
         creator = guild.get_member(ticket["creator_id"]) or self.bot.get_user(ticket["creator_id"])
@@ -307,37 +307,22 @@ class TicketsCog(commands.Cog):
         header_lines.append(TRANSCRIPT_SEPARATOR)
         message_lines = [self.transcript_line(message) for message in messages]
         full_text = "\n".join(header_lines + message_lines)
-        preview_lines = list(header_lines)
-        preview_budget = 3900 - len("\n".join(preview_lines)) - 1
-
-        for line in message_lines:
-            line_length = len(line) + 1
-
-            if line_length > preview_budget:
-                if preview_budget > 40:
-                    preview_lines.append("... see attached file for full transcript ...")
-                break
-
-            preview_lines.append(line)
-            preview_budget -= line_length
-
-        preview_text = "\n".join(preview_lines)
-
-        embed = self.base_embed(f"Ticket transcript — #{channel.name}", f"```\n{preview_text}\n```")
         filename = f"{channel.name}-transcript.txt"
-        transcript_file = discord.File(io.BytesIO(full_text.encode("utf-8")), filename=filename)
-        return embed, transcript_file
+        return discord.File(io.BytesIO(full_text.encode("utf-8")), filename=filename)
 
-    async def send_transcript(self, ticket, channel: discord.TextChannel, guild: discord.Guild, closer: discord.abc.User | None = None):
+    async def log_ticket_close(self, interaction: discord.Interaction, ticket):
         if not self.log_channel_id:
             return
 
         log_channel = self.bot.get_channel(self.log_channel_id)
 
-        if log_channel is None:
+        if log_channel is None or interaction.channel is None or interaction.guild is None:
             return
 
-        embed, transcript_file = await self.build_transcript(ticket, channel, guild, closer)
+        embed = self.base_embed("Ticket Closed", f"Ticket #{ticket['id']} was closed by {interaction.user.mention}.")
+        embed.add_field(name="Channel", value=f"#{interaction.channel.name} (`{interaction.channel.id}`)", inline=True)
+        embed.add_field(name="Type", value=ticket["ticket_type"], inline=True)
+        transcript_file = await self.build_transcript_file(ticket, interaction.channel, interaction.guild, interaction.user)
         await log_channel.send(embed=embed, file=transcript_file)
 
     async def disable_close_button(self, channel: discord.TextChannel):
@@ -393,7 +378,7 @@ class TicketsCog(commands.Cog):
 
         close_embed = self.base_embed("Ticket Closed", f"This ticket was closed by {interaction.user.mention}.\n\nThis channel will be deleted in **{TICKET_DELETE_DELAY} seconds**.")
         await channel.send(embed=close_embed)
-        await self.send_transcript(ticket, channel, interaction.guild, interaction.user)
+        await self.log_ticket_close(interaction, ticket)
         asyncio.create_task(self.delete_ticket_channel_after(channel, ticket["id"]))
 
     @ticket.command(name="panel", description="Send the ticket panel.")
@@ -433,7 +418,7 @@ class TicketsCog(commands.Cog):
 
         await self.mark_ticket_closed(ticket["id"])
         await interaction.response.send_message("Deleting ticket channel.", ephemeral=True)
-        await self.send_transcript(ticket, interaction.channel, interaction.guild, interaction.user)
+        await self.log_ticket_close(interaction, ticket)
         await interaction.channel.delete(reason=f"Ticket deleted by {interaction.user}")
 
 async def setup(bot):
