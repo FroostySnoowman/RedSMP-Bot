@@ -186,3 +186,18 @@ Security:
             ROLE_UPDATE: 5
             WEBHOOK_CREATE: 2
             BOT_ADD: 1
+
+Moderation:
+    LOCKCHAT:
+        ENABLED: true
+        ALLOWED_ROLE_IDS: []
+        STAFF_ROLE_IDS: []
+        DENY_EVERYONE: true
+        DENY_MEMBERS_ROLE: true
+
+    PURGE:
+        ENABLED: true
+        ALLOWED_ROLE_IDS: []
+        MIN_AMOUNT: 1
+        MAX_AMOUNT: 100
+        DELETE_PINNED: false
