@@ -9,11 +9,13 @@ with open('config.yml', 'r') as file:
 guild_id = data["General"]["GUILD_ID"]
 embed_color = data["General"]["EMBED_COLOR"]
 staff_role_ids = data.get("Tickets", {}).get("STAFF_ROLE_IDS", [])
+members_role_id = data.get("Roles", {}).get("MEMBERS_ROLE_ID", 0)
 
 class ModerationCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.staff_role_ids = staff_role_ids
+        self.members_role_id = members_role_id
 
     def base_embed(self, title: str, description: str | None = None) -> discord.Embed:
         return discord.Embed(title=title, description=description, color=discord.Color.from_str(embed_color))
@@ -29,12 +31,25 @@ class ModerationCog(commands.Cog):
 
         return roles
 
+    def members_role(self, guild: discord.Guild) -> discord.Role | None:
+        if not self.members_role_id:
+            return None
+
+        return guild.get_role(self.members_role_id)
+
     async def lock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> bool:
         guild = channel.guild
         reason = f"Channel locked by {moderator}"
+        staff_ids = set(self.staff_role_ids)
 
         try:
             await channel.set_permissions(guild.default_role, send_messages=False, reason=reason)
+
+            members_role = self.members_role(guild)
+
+            if members_role is not None and members_role.id not in staff_ids:
+                await channel.set_permissions(members_role, send_messages=False, reason=reason)
+
             await channel.set_permissions(guild.me, send_messages=True, read_message_history=True, reason=reason)
 
             for role in self.staff_roles(guild):
@@ -49,9 +64,15 @@ class ModerationCog(commands.Cog):
     async def unlock_channel(self, channel: discord.TextChannel, moderator: discord.Member) -> bool:
         guild = channel.guild
         reason = f"Channel unlocked by {moderator}"
+        staff_ids = set(self.staff_role_ids)
 
         try:
             await channel.set_permissions(guild.default_role, send_messages=None, reason=reason)
+
+            members_role = self.members_role(guild)
+
+            if members_role is not None and members_role.id not in staff_ids:
+                await channel.set_permissions(members_role, send_messages=None, reason=reason)
 
             for role in self.staff_roles(guild):
                 await channel.set_permissions(role, send_messages=None, reason=reason)
