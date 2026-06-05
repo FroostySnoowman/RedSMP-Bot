@@ -1,11 +1,17 @@
+import asyncio
+import io
 import discord
 import aiosqlite
 import yaml
 import time
 import re
+from datetime import datetime, timezone
 from discord import app_commands
 from discord.ext import commands
 from cogs.functions.sqlite import DATABASE_PATH, tickets
+
+TICKET_DELETE_DELAY = 15
+TRANSCRIPT_SEPARATOR = "_" * 40
 
 with open('config.yml', 'r') as file:
     data = yaml.safe_load(file)
@@ -229,6 +235,130 @@ class TicketsCog(commands.Cog):
             await db.execute("UPDATE tickets SET status = ?, closed_at = ? WHERE id = ?", ("closed", current_timestamp(), ticket_id))
             await db.commit()
 
+    def iso_timestamp(self, value: datetime | int) -> str:
+        if isinstance(value, int):
+            value = datetime.fromtimestamp(value, tz=timezone.utc)
+
+        value = value.astimezone(timezone.utc)
+        return value.strftime("%Y-%m-%dT%H:%M:%S") + f".{value.microsecond // 1000:03d}Z"
+
+    def transcript_author(self, author: discord.abc.User) -> str:
+        discriminator = getattr(author, "discriminator", "0")
+
+        if discriminator and discriminator != "0":
+            return f"{author.name}#{discriminator}"
+
+        return author.name
+
+    def transcript_content(self, message: discord.Message) -> str:
+        parts = []
+
+        if message.content:
+            parts.append(message.content)
+
+        for embed in message.embeds:
+            if embed.description:
+                parts.append(embed.description)
+
+        if message.attachments:
+            attachment_names = ", ".join(attachment.filename for attachment in message.attachments)
+            parts.append(f"[attachments: {attachment_names}]")
+
+        if message.stickers:
+            sticker_names = ", ".join(sticker.name for sticker in message.stickers)
+            parts.append(f"[stickers: {sticker_names}]")
+
+        if not parts:
+            return "[no text content]"
+
+        content = "\n".join(parts)
+        content = content.replace("```", "'''")
+        return " ".join(content.split())
+
+    def transcript_line(self, message: discord.Message) -> str:
+        timestamp = self.iso_timestamp(message.created_at)
+        author = self.transcript_author(message.author)
+        content = self.transcript_content(message)
+        return f"[{timestamp}] {author}: {content}"
+
+    async def fetch_channel_messages(self, channel: discord.TextChannel) -> list[discord.Message]:
+        messages = []
+        async for message in channel.history(limit=None, oldest_first=True):
+            messages.append(message)
+        return messages
+
+    async def build_transcript(self, ticket, channel: discord.TextChannel, guild: discord.Guild, closer: discord.abc.User | None = None) -> tuple[discord.Embed, discord.File]:
+        type_config = self.get_type_config(ticket["ticket_type"])
+        category = type_config.get("LABEL", ticket["ticket_type"]) if type_config else ticket["ticket_type"]
+        creator = guild.get_member(ticket["creator_id"]) or self.bot.get_user(ticket["creator_id"])
+        creator_name = creator.name if creator is not None else "Unknown User"
+        opened_at = self.iso_timestamp(ticket["created_at"])
+        messages = await self.fetch_channel_messages(channel)
+        header_lines = [
+            f"Ticket transcript — #{channel.name}",
+            f"Category: {category}",
+            f"Opened by: {creator_name} ({ticket['creator_id']})",
+            f"Opened at: {opened_at}",
+        ]
+
+        if closer is not None:
+            header_lines.append(f"Closed by: {self.transcript_author(closer)} ({closer.id}) at {self.iso_timestamp(datetime.now(timezone.utc))}")
+
+        header_lines.append(TRANSCRIPT_SEPARATOR)
+        message_lines = [self.transcript_line(message) for message in messages]
+        full_text = "\n".join(header_lines + message_lines)
+        preview_lines = list(header_lines)
+        preview_budget = 3900 - len("\n".join(preview_lines)) - 1
+
+        for line in message_lines:
+            line_length = len(line) + 1
+
+            if line_length > preview_budget:
+                if preview_budget > 40:
+                    preview_lines.append("... see attached file for full transcript ...")
+                break
+
+            preview_lines.append(line)
+            preview_budget -= line_length
+
+        preview_text = "\n".join(preview_lines)
+
+        embed = self.base_embed(f"Ticket transcript — #{channel.name}", f"```\n{preview_text}\n```")
+        filename = f"{channel.name}-transcript.txt"
+        transcript_file = discord.File(io.BytesIO(full_text.encode("utf-8")), filename=filename)
+        return embed, transcript_file
+
+    async def send_transcript(self, ticket, channel: discord.TextChannel, guild: discord.Guild, closer: discord.abc.User | None = None):
+        if not self.log_channel_id:
+            return
+
+        log_channel = self.bot.get_channel(self.log_channel_id)
+
+        if log_channel is None:
+            return
+
+        embed, transcript_file = await self.build_transcript(ticket, channel, guild, closer)
+        await log_channel.send(embed=embed, file=transcript_file)
+
+    async def disable_close_button(self, channel: discord.TextChannel):
+        async for message in channel.history(limit=25):
+            if message.author.id != self.bot.user.id or not message.components:
+                continue
+
+            for row in message.components:
+                for component in row.children:
+                    if getattr(component, "custom_id", None) == "ticket_channel:close":
+                        await message.edit(view=None)
+                        return
+
+    async def delete_ticket_channel_after(self, channel: discord.TextChannel, ticket_id: int):
+        await asyncio.sleep(TICKET_DELETE_DELAY)
+
+        try:
+            await channel.delete(reason=f"Ticket #{ticket_id} closed")
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+
     async def close_ticket(self, interaction: discord.Interaction):
         if interaction.channel is None or not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("This can only be used in a ticket channel.", ephemeral=True)
@@ -240,28 +370,31 @@ class TicketsCog(commands.Cog):
             await interaction.response.send_message("This channel is not linked to a ticket.", ephemeral=True)
             return
 
+        if ticket["status"] != "open":
+            await interaction.response.send_message("This ticket is already closed.", ephemeral=True)
+            return
+
         if interaction.user.id != ticket["creator_id"] and not self.is_staff(interaction.user):
             await interaction.response.send_message("You do not have permission to close this ticket.", ephemeral=True)
             return
 
+        channel = interaction.channel
         await self.mark_ticket_closed(ticket["id"])
         await interaction.response.send_message("Ticket closed.", ephemeral=True)
-        await interaction.channel.set_permissions(interaction.guild.get_member(ticket["creator_id"]), send_messages=False)
-        await self.log_ticket_close(interaction, ticket)
+        await self.disable_close_button(channel)
 
-    async def log_ticket_close(self, interaction: discord.Interaction, ticket):
-        if not self.log_channel_id:
-            return
+        creator = interaction.guild.get_member(ticket["creator_id"])
 
-        channel = self.bot.get_channel(self.log_channel_id)
+        if creator is not None:
+            try:
+                await channel.set_permissions(creator, send_messages=False)
+            except discord.HTTPException:
+                pass
 
-        if channel is None:
-            return
-
-        embed = self.base_embed("Ticket Closed", f"Ticket #{ticket['id']} was closed by {interaction.user.mention}.")
-        embed.add_field(name="Channel", value=interaction.channel.mention, inline=True)
-        embed.add_field(name="Type", value=ticket["ticket_type"], inline=True)
-        await channel.send(embed=embed)
+        close_embed = self.base_embed("Ticket Closed", f"This ticket was closed by {interaction.user.mention}.\n\nThis channel will be deleted in **{TICKET_DELETE_DELAY} seconds**.")
+        await channel.send(embed=close_embed)
+        await self.send_transcript(ticket, channel, interaction.guild, interaction.user)
+        asyncio.create_task(self.delete_ticket_channel_after(channel, ticket["id"]))
 
     @ticket.command(name="panel", description="Send the ticket panel.")
     @app_commands.checks.has_permissions(administrator=True)
@@ -300,7 +433,7 @@ class TicketsCog(commands.Cog):
 
         await self.mark_ticket_closed(ticket["id"])
         await interaction.response.send_message("Deleting ticket channel.", ephemeral=True)
-        await self.log_ticket_close(interaction, ticket)
+        await self.send_transcript(ticket, interaction.channel, interaction.guild, interaction.user)
         await interaction.channel.delete(reason=f"Ticket deleted by {interaction.user}")
 
 async def setup(bot):
